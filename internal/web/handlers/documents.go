@@ -40,7 +40,10 @@ func NewDocumentsHandler(cfg config.Config, rc *redisclient.Client) *DocumentsHa
 func (h *DocumentsHandler) Status(c *gin.Context) {
 	jobID := c.Param("id")
 
-	// Fast path: check Redis for a completed extraction
+	// Redis fast path: covers both in-flight and completed jobs.
+	// ctrl:job:{jobID} is written by Upload the moment the extractor accepts the job,
+	// so its presence means the job is known — no need to proxy to a potentially
+	// different extractor replica (in-memory store is not shared across replicas).
 	if h.redis != nil {
 		if docID, ok, _ := h.redis.Get("ctrl:job:" + jobID); ok && docID != "" {
 			if done, _ := h.redis.Exists("extraction:" + docID); done {
@@ -49,12 +52,18 @@ func (h *DocumentsHandler) Status(c *gin.Context) {
 					"document_id": docID,
 					"status":      "completed",
 				})
-				return
+			} else {
+				c.JSON(http.StatusOK, gin.H{
+					"job_id":      jobID,
+					"document_id": docID,
+					"status":      "processing",
+				})
 			}
+			return
 		}
 	}
 
-	// Fallback: proxy to extractor
+	// Fallback: proxy to extractor (job not in Redis — unknown or TTL expired)
 	status, body, _, err := h.extractor.Request(
 		http.MethodGet,
 		"/internal/v1/extractions/"+jobID,
