@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var controllerTags = []string{
+var controllerDefaultTags = []string{
 	"traefik.enable=true",
 	"traefik.http.routers.controller.rule=Host(`api.universidad.localhost`)",
 	"traefik.http.routers.controller.entryPoints=https",
@@ -31,10 +31,10 @@ type serviceRegistration struct {
 }
 
 type healthCheck struct {
-	HTTP                            string `json:"HTTP"`
-	Interval                        string `json:"Interval"`
-	Timeout                         string `json:"Timeout"`
-	DeregisterCriticalServiceAfter  string `json:"DeregisterCriticalServiceAfter"`
+	HTTP                           string `json:"HTTP"`
+	Interval                       string `json:"Interval"`
+	Timeout                        string `json:"Timeout"`
+	DeregisterCriticalServiceAfter string `json:"DeregisterCriticalServiceAfter"`
 }
 
 // RegisterController registers this controller instance with Consul in a background goroutine.
@@ -51,24 +51,26 @@ func registerWithRetry(consulURL string, port int) {
 	// Prefer the container's first non-loopback IP so Consul health checks can reach us
 	addr := resolveIP(hostname)
 
-	payload := serviceRegistration{
-		ID:      fmt.Sprintf("controller-%s", hostname),
-		Name:    "controller",
-		Address: addr,
-		Port:    port,
-		Tags:    controllerTags,
-		Check: healthCheck{
-			HTTP:                           fmt.Sprintf("http://%s:%d/health", addr, port),
-			Interval:                       "15s",
-			Timeout:                        "5s",
-			DeregisterCriticalServiceAfter: "30s",
-		},
-	}
-
-	body, _ := json.Marshal(payload)
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	for attempt := range 10 {
+		tags := KVGetList(consulURL, "traefik_tags", controllerDefaultTags)
+
+		payload := serviceRegistration{
+			ID:      fmt.Sprintf("controller-%s", hostname),
+			Name:    "controller",
+			Address: addr,
+			Port:    port,
+			Tags:    tags,
+			Check: healthCheck{
+				HTTP:                           fmt.Sprintf("http://%s:%d/health", addr, port),
+				Interval:                       "15s",
+				Timeout:                        "5s",
+				DeregisterCriticalServiceAfter: "30s",
+			},
+		}
+
+		body, _ := json.Marshal(payload)
 		resp, err := client.Do(newPutRequest(consulURL+"/v1/agent/service/register", body))
 		if err == nil {
 			resp.Body.Close()

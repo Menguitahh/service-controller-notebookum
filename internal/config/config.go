@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"os"
+
+	"service-controller-notebookum/internal/consul"
+)
 
 type Config struct {
 	Port              string
@@ -16,17 +20,22 @@ type Config struct {
 }
 
 func Load() Config {
+	consulURL := env("CONSUL_URL", "http://consul:8500")
+	kv := func(key, def string) string {
+		return consul.KVGet(consulURL, key, def)
+	}
+
 	return Config{
-		Port:              env("PORT", "5000"),
-		CorrelationHeader: env("X_CORRELATION_HEADER", "X-Correlation-ID"),
-		ExtractorURL:      env("EXTRACTOR_URL", "http://extractor.universidad.localhost:5000"),
-		AIURL:             env("AI_URL", "http://ai.universidad.localhost:5000"),
-		PersistenceURL:    env("PERSISTENCE_URL", "http://persistence-java.universidad.localhost:8080"),
-		UserServiceURL:    env("USER_SERVICE_URL", "http://users.universidad.localhost:5000"),
-		RedisHost:         env("REDIS_HOST", ""),
-		RedisPort:         env("REDIS_PORT", "6379"),
-		RedisPassword:     env("REDIS_PASSWORD", ""),
-		ConsulURL:         env("CONSUL_URL", "http://consul:8500"),
+		Port:              kv("port", "5000"),
+		CorrelationHeader: "X-Correlation-ID",
+		ExtractorURL:      kv("extractor_url", "http://extractor.universidad.localhost:5000"),
+		AIURL:             kv("ai_url", "http://ai.universidad.localhost:5000"),
+		PersistenceURL:    kv("persistence_url", "http://persistence-java.universidad.localhost:8080"),
+		UserServiceURL:    kv("user_service_url", "http://users.universidad.localhost:5000"),
+		RedisHost:         kv("redis_host", "redis"),
+		RedisPort:         kv("redis_port", "6379"),
+		RedisPassword:     kv("redis_password", ""),
+		ConsulURL:         consulURL,
 	}
 }
 
